@@ -53,3 +53,12 @@ dkms.conf
 
 # debug information files
 *.dwo
+
+# Rust / Cargo
+Cargo.lock
+target/
+tinyc_compiler_test/target/
+
+# Local test executables
+main_exe
+main_test
