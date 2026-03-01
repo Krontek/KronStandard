@@ -1,12 +1,33 @@
 use std::process::Command;
 
 fn main() {
+    // --- Test C File Compilation ---
+    println!("\n[Test] Compiling test/test.c into an executable...");
+    let test_source = "test/test.c";
+    let test_exe = if cfg!(windows) { "test/test_app.exe" } else { "test/test_app" };
+
+    let mut child_test = Command::new("tcc")
+        .arg(test_source)
+        .arg("../standardfunctions.c")
+        .arg("-o")
+        .arg(test_exe)
+        .spawn()
+        .expect("Failed to execute 'tcc' for test.c");
+
+    let ecode_test = child_test.wait().expect("Failed to wait on tcc process for test.c");
+    if !ecode_test.success() {
+        eprintln!("Error: Failed to compile test.c. Exit code: {}", ecode_test);
+    } else {
+        println!("=> Created executable: {}", test_exe);
+    }
+    println!("--------------------------------------------------");
+
     println!("Preparing to compile C files into a static library using Tiny C Compiler (TCC)...");
 
     // File paths
-    let lib_source = "../standardfunction.c";
-    let lib_object = "standardfunction.o";
-    let lib_archive = "libstandardfunction.a";
+    let lib_source = "../standardfunctions.c";
+    let lib_object = "standardfunctions.o";
+    let lib_archive = "libstandardfunctions.a";
 
     // 1. Compile the standardfunction.c to an object file (.o)
     println!("\n[1/2] Compiling {} into object file ({}) for ARM Cortex-M4 using tcc...", lib_source, lib_object);
@@ -64,5 +85,5 @@ fn main() {
     println!("\nLibrary generation succeeded! (Structure alignment optimized for ARM Cortex-M4)");
     println!("You can now use this library in an ARM Cortex-M4 C project.");
     println!("If compiling the final binary with GCC for Cortex-M4, use:");
-    println!("  arm-none-eabi-gcc your_main.c -mcpu=cortex-m4 -mthumb -L/path/to/directory -lstandardfunction");
+    println!("  arm-none-eabi-gcc your_main.c -mcpu=cortex-m4 -mthumb -L/path/to/directory -lstandardfunctions");
 }
