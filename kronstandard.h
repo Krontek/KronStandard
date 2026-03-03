@@ -1,5 +1,5 @@
-#ifndef STANDARDFUNCTION_H
-#define STANDARDFUNCTION_H
+#ifndef KRONSTANDARD_H
+#define KRONSTANDARD_H
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -94,4 +94,4 @@ void CTU_Call (CTU  *inst);
 void CTD_Call (CTD  *inst);
 void CTUD_Call(CTUD *inst);
 
-#endif // STANDARDFUNCTION_H
+#endif // KRONSTANDARD_H
