@@ -71,44 +71,27 @@ typedef struct {
     bool MD;        // Edge marker for CD (1-bit / 8-bit)
 } CTUD;
 
-// SR Bistable (Set dominant)
+// Timer On Delay Retentive (TONR)
+// Accumulates ET across multiple IN=true intervals.
+// ET is retained when IN goes false.
+// RESET clears ET and Q regardless of IN.
 typedef struct {
-    bool S1;        // Set input - dominant (1-bit / 8-bit)
-    bool R;         // Reset input (1-bit / 8-bit)
-    bool Q1;        // Output (1-bit / 8-bit)
-} SR;
-
-// RS Bistable (Reset dominant)
-typedef struct {
-    bool S;         // Set input (1-bit / 8-bit)
-    bool R1;        // Reset input - dominant (1-bit / 8-bit)
-    bool Q1;        // Output (1-bit / 8-bit)
-} RS;
-
-// Rising Edge Trigger (R_TRIG)
-typedef struct {
-    bool CLK;       // Clock input (1-bit / 8-bit)
-    bool Q;         // Output: true for one scan on rising edge (1-bit / 8-bit)
-    bool M;         // Internal marker: previous CLK state (1-bit / 8-bit)
-} R_TRIG;
-
-// Falling Edge Trigger (F_TRIG)
-typedef struct {
-    bool CLK;       // Clock input (1-bit / 8-bit)
-    bool Q;         // Output: true for one scan on falling edge (1-bit / 8-bit)
-    bool M;         // Internal marker: previous CLK state (1-bit / 8-bit)
-} F_TRIG;
+    TIME PT;        // Preset Time (32-bit)
+    TIME ET;        // Elapsed Time – accumulated (32-bit)
+    TIME StartTime; // Virtual session start – internal (32-bit)
+    bool IN;        // Input (1-bit / 8-bit)
+    bool RESET;     // Reset: clears ET and Q (1-bit / 8-bit)
+    bool Q;         // Output: true when ET >= PT (1-bit / 8-bit)
+    bool M;         // Internal: timer is currently running (1-bit / 8-bit)
+} TONR;
 
 // Function Prototypes
-void TON_Call(TON *inst, TIME currentTime);
-void TOF_Call(TOF *inst, TIME currentTime);
-void CTU_Call(CTU *inst);
-void TP_Call(TP *inst, TIME currentTime);
-void CTD_Call(CTD *inst);
+void TON_Call (TON  *inst, TIME currentTime);
+void TOF_Call (TOF  *inst, TIME currentTime);
+void TP_Call  (TP   *inst, TIME currentTime);
+void TONR_Call(TONR *inst, TIME currentTime);
+void CTU_Call (CTU  *inst);
+void CTD_Call (CTD  *inst);
 void CTUD_Call(CTUD *inst);
-void SR_Call(SR *inst);
-void RS_Call(RS *inst);
-void R_TRIG_Call(R_TRIG *inst);
-void F_TRIG_Call(F_TRIG *inst);
 
 #endif // STANDARDFUNCTION_H

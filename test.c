@@ -1,5 +1,5 @@
 #include <stdio.h>
-#include "../../standardfunctions.h"
+#include "standardfunctions.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -250,128 +250,78 @@ static void test_CTUD(void) {
 }
 
 // ─────────────────────────────────────────────
-// SR
+// TONR
 // ─────────────────────────────────────────────
-static void test_SR(void) {
-    printf("\n--- SR (Set Dominant Bistable) ---\n");
-    SR sr = {0};
+static void test_TONR(void) {
+    printf("\n--- TONR (Timer On Delay Retentive) ---\n");
+    TONR t = {0};
+    t.PT = 500;
 
-    sr.S1 = true; sr.R = false;
-    SR_Call(&sr);
-    check("Q1 set when S1=1, R=0", sr.Q1 == true);
+    // First IN=true interval: accumulate 200 ticks
+    t.IN = true;
+    TONR_Call(&t, 0);
+    check("ET=0 on first scan after rising edge", t.ET == 0);
+    check("Q false, ET < PT",                    t.Q  == false);
 
-    sr.S1 = false; sr.R = true;
-    SR_Call(&sr);
-    check("Q1 reset when S1=0, R=1", sr.Q1 == false);
+    TONR_Call(&t, 200);
+    check("ET=200 while IN=true",  t.ET == 200);
+    check("Q still false, ET<PT",  t.Q  == false);
 
-    sr.S1 = false; sr.R = false;
-    SR_Call(&sr);
-    check("Q1 retains false when both 0", sr.Q1 == false);
+    // IN falls: ET should be retained at 200
+    t.IN = false;
+    TONR_Call(&t, 300);
+    check("ET retained at 200 after IN falls",   t.ET == 200);
+    check("Q still false after pause",           t.Q  == false);
 
-    sr.S1 = true; sr.R = false;
-    SR_Call(&sr);
-    sr.S1 = false; sr.R = false;
-    SR_Call(&sr);
-    check("Q1 retains true when both 0 after set", sr.Q1 == true);
+    // IN low for a while – ET must not change
+    TONR_Call(&t, 400);
+    check("ET still 200 while IN=false",         t.ET == 200);
 
-    // Set dominant: S1=1 wins over R=1
-    sr.S1 = true; sr.R = true;
-    SR_Call(&sr);
-    check("Q1 true when both S1=1 and R=1 (Set dominant)", sr.Q1 == true);
-}
+    // Second IN=true interval: continues from 200
+    t.IN = true;
+    TONR_Call(&t, 500);
+    check("ET=200 on first scan of second interval", t.ET == 200);
 
-// ─────────────────────────────────────────────
-// RS
-// ─────────────────────────────────────────────
-static void test_RS(void) {
-    printf("\n--- RS (Reset Dominant Bistable) ---\n");
-    RS rs = {0};
+    TONR_Call(&t, 600);
+    check("ET=300 accumulating in second interval",  t.ET == 300);
 
-    rs.S = true; rs.R1 = false;
-    RS_Call(&rs);
-    check("Q1 set when S=1, R1=0", rs.Q1 == true);
+    // Reach PT=500
+    TONR_Call(&t, 800);
+    check("ET=500 (clamped at PT)",  t.ET == 500);
+    check("Q true when ET>=PT",      t.Q  == true);
 
-    rs.S = false; rs.R1 = true;
-    RS_Call(&rs);
-    check("Q1 reset when S=0, R1=1", rs.Q1 == false);
+    // Q remains true, ET clamped
+    TONR_Call(&t, 900);
+    check("Q stays true after PT reached", t.Q == true);
+    check("ET stays clamped at PT",        t.ET == 500);
 
-    rs.S = false; rs.R1 = false;
-    RS_Call(&rs);
-    check("Q1 retains false when both 0", rs.Q1 == false);
+    // RESET clears everything
+    t.RESET = true;
+    TONR_Call(&t, 1000);
+    check("ET=0 after RESET",   t.ET == 0);
+    check("Q false after RESET", t.Q == false);
 
-    rs.S = true; rs.R1 = false;
-    RS_Call(&rs);
-    rs.S = false; rs.R1 = false;
-    RS_Call(&rs);
-    check("Q1 retains true when both 0 after set", rs.Q1 == true);
+    // After RESET, timer starts fresh
+    t.RESET = false;
+    t.IN    = true;
+    TONR_Call(&t, 1100);
+    check("ET=0 after RESET + rising edge", t.ET == 0);
 
-    // Reset dominant: R1=1 wins over S=1
-    rs.S = true; rs.R1 = true;
-    RS_Call(&rs);
-    check("Q1 false when both S=1 and R1=1 (Reset dominant)", rs.Q1 == false);
-}
+    TONR_Call(&t, 1200);
+    check("ET=100 counting fresh",          t.ET == 100);
 
-// ─────────────────────────────────────────────
-// R_TRIG
-// ─────────────────────────────────────────────
-static void test_R_TRIG(void) {
-    printf("\n--- R_TRIG (Rising Edge Trigger) ---\n");
-    R_TRIG rt = {0};
+    // RESET while IN is high
+    t.RESET = true;
+    TONR_Call(&t, 1300);
+    check("RESET while IN=true clears ET",  t.ET == 0);
+    check("RESET while IN=true clears Q",   t.Q  == false);
+    t.RESET = false;
 
-    rt.CLK = false;
-    R_TRIG_Call(&rt);
-    check("Q false when CLK stays low", rt.Q == false);
-
-    rt.CLK = true;
-    R_TRIG_Call(&rt);
-    check("Q true on rising edge (scan 1)", rt.Q == true);
-
-    R_TRIG_Call(&rt);
-    check("Q false on second scan while CLK stays high", rt.Q == false);
-
-    rt.CLK = false;
-    R_TRIG_Call(&rt);
-    check("Q false on falling edge", rt.Q == false);
-
-    rt.CLK = true;
-    R_TRIG_Call(&rt);
-    check("Q true on next rising edge", rt.Q == true);
-
-    R_TRIG_Call(&rt);
-    check("Q false again after one scan", rt.Q == false);
-}
-
-// ─────────────────────────────────────────────
-// F_TRIG
-// ─────────────────────────────────────────────
-static void test_F_TRIG(void) {
-    printf("\n--- F_TRIG (Falling Edge Trigger) ---\n");
-    F_TRIG ft = {0};
-
-    ft.CLK = true;
-    F_TRIG_Call(&ft);
-    check("Q false on rising edge", ft.Q == false);
-
-    F_TRIG_Call(&ft);
-    check("Q false while CLK stays high", ft.Q == false);
-
-    ft.CLK = false;
-    F_TRIG_Call(&ft);
-    check("Q true on falling edge (scan 1)", ft.Q == true);
-
-    F_TRIG_Call(&ft);
-    check("Q false on second scan while CLK stays low", ft.Q == false);
-
-    ft.CLK = true;
-    F_TRIG_Call(&ft);
-    check("Q false on rising edge", ft.Q == false);
-
-    ft.CLK = false;
-    F_TRIG_Call(&ft);
-    check("Q true on next falling edge", ft.Q == true);
-
-    F_TRIG_Call(&ft);
-    check("Q false again after one scan", ft.Q == false);
+    // After RESET with IN still high, next call picks up from 0
+    TONR_Call(&t, 1400);
+    check("Fresh accumulation after mid-run RESET", t.ET == 0);
+    TONR_Call(&t, 1500);
+    check("ET=100 after fresh start", t.ET == 100);
 }
 
 // ─────────────────────────────────────────────
@@ -430,10 +380,7 @@ int main(void) {
     test_TP();
     test_CTD();
     test_CTUD();
-    test_SR();
-    test_RS();
-    test_R_TRIG();
-    test_F_TRIG();
+    test_TONR();
 
     printf("\n========================================\n");
     printf("  Results: %d passed, %d failed\n", pass_count, fail_count);

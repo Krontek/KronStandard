@@ -134,32 +134,36 @@ void CTUD_Call(CTUD *inst) {
     inst->QD = (inst->CV <= 0);
 }
 
-// SR Bistable (Set dominant)
-void SR_Call(SR *inst) {
-    if (inst->S1) {
-        inst->Q1 = true;
-    } else if (inst->R) {
-        inst->Q1 = false;
+// Timer On Delay Retentive
+// StartTime is kept as a "virtual" origin so that
+//   ET = currentTime - StartTime  always gives the correct accumulated time.
+// On the rising edge of IN, StartTime is set to (currentTime - ET),
+// preserving whatever was accumulated in previous IN=true intervals.
+void TONR_Call(TONR *inst, TIME currentTime) {
+    if (inst->RESET) {
+        inst->ET        = 0;
+        inst->Q         = false;
+        inst->M         = false;
+        return;
     }
-}
 
-// RS Bistable (Reset dominant)
-void RS_Call(RS *inst) {
-    if (inst->R1) {
-        inst->Q1 = false;
-    } else if (inst->S) {
-        inst->Q1 = true;
+    if (inst->IN) {
+        if (!inst->M) {
+            // Rising edge: adjust StartTime so accumulated ET is preserved
+            inst->StartTime = currentTime - inst->ET;
+            inst->M         = true;
+        }
+        inst->ET = currentTime - inst->StartTime;
+        if (inst->ET >= inst->PT) {
+            inst->ET = inst->PT;
+            inst->Q  = true;
+        }
+    } else {
+        if (inst->M) {
+            // Falling edge: pause the timer.
+            // ET keeps the value computed on the last IN=true scan;
+            // do NOT advance it here (scan-cycle sampled behaviour).
+            inst->M = false;
+        }
     }
-}
-
-// Rising Edge Trigger
-void R_TRIG_Call(R_TRIG *inst) {
-    inst->Q = inst->CLK && !inst->M;
-    inst->M = inst->CLK;
-}
-
-// Falling Edge Trigger
-void F_TRIG_Call(F_TRIG *inst) {
-    inst->Q = !inst->CLK && inst->M;
-    inst->M = inst->CLK;
 }
