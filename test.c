@@ -1,5 +1,5 @@
 #include <stdio.h>
-#include "standardfunctions.h"
+#include "kronstandard.h"
 
 #ifdef _WIN32
 #include <windows.h>
