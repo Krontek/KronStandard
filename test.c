@@ -1,8 +1,9 @@
-#include <stdio.h>
 #include "kronstandard.h"
+#include <stdio.h>
 
 #ifdef _WIN32
 #include <windows.h>
+#undef IN
 #define sleep_us(us) Sleep((us) / 1000)
 #else
 #include <unistd.h>

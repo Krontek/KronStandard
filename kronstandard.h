@@ -3,6 +3,11 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#define __int8_t_defined
+
+#ifdef IN
+#undef IN
+#endif
 
 // TIME is treated as milliseconds
 typedef uint32_t TIME;
