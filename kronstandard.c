@@ -28,19 +28,22 @@ void TOF_Call(TOF *inst, TIME currentTime) {
         inst->Q = true;
         inst->ET = 0;
         inst->M = false;
-    } else {
+    } else if (inst->Q) {
         if (!inst->M) {
             inst->M = true;
             inst->StartTime = currentTime;
+            inst->ET = 0;
         } else {
             inst->ET = currentTime - inst->StartTime;
             if (inst->ET >= inst->PT) {
                 inst->ET = inst->PT;
                 inst->Q = false;
-            } else {
-                inst->Q = true;
+                inst->M = false;
             }
         }
+    } else {
+        inst->ET = 0;
+        inst->M = false;
     }
 }
 
@@ -48,22 +51,13 @@ void TOF_Call(TOF *inst, TIME currentTime) {
 void CTU_Call(CTU *inst) {
     if (inst->RESET) {
         inst->CV = 0;
-        inst->Q = false;
-        inst->M = false;
-    } else {
-        // Edge detection for CU
-        if (inst->CU && !inst->M) {
+    } else if (inst->CU && !inst->M) {
+        if (inst->CV < 32767) {
             inst->CV++;
         }
-        inst->M = inst->CU;
-
-        // Update output Q
-        if (inst->CV >= inst->PV) {
-            inst->Q = true;
-        } else {
-            inst->Q = false;
-        }
     }
+    inst->M = inst->CU;
+    inst->Q = (inst->CV >= inst->PV);
 }
 
 // Timer Pulse
@@ -92,16 +86,12 @@ void TP_Call(TP *inst, TIME currentTime) {
 void CTD_Call(CTD *inst) {
     if (inst->LD) {
         inst->CV = inst->PV;
-        inst->M = false;
-    } else {
-        // Edge detection for CD
-        if (inst->CD && !inst->M) {
-            if (inst->CV > -32768) {
-                inst->CV--;
-            }
+    } else if (inst->CD && !inst->M) {
+        if (inst->CV > -32768) {
+            inst->CV--;
         }
-        inst->M = inst->CD;
     }
+    inst->M = inst->CD;
     inst->Q = (inst->CV <= 0);
 }
 
@@ -109,12 +99,8 @@ void CTD_Call(CTD *inst) {
 void CTUD_Call(CTUD *inst) {
     if (inst->RESET) {
         inst->CV = 0;
-        inst->MU = false;
-        inst->MD = false;
     } else if (inst->LD) {
         inst->CV = inst->PV;
-        inst->MU = false;
-        inst->MD = false;
     } else {
         bool cu_edge = inst->CU && !inst->MU;
         bool cd_edge = inst->CD && !inst->MD;
@@ -127,9 +113,9 @@ void CTUD_Call(CTUD *inst) {
                 inst->CV--;
             }
         }
-        inst->MU = inst->CU;
-        inst->MD = inst->CD;
     }
+    inst->MU = inst->CU;
+    inst->MD = inst->CD;
     inst->QU = (inst->CV >= inst->PV);
     inst->QD = (inst->CV <= 0);
 }

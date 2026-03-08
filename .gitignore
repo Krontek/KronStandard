@@ -61,4 +61,4 @@ tinyc_compiler_test/target/
 
 # Local test executables
 main_exe
-main_test
+test_std

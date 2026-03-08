@@ -328,6 +328,122 @@ static void test_TONR(void) {
 // ─────────────────────────────────────────────
 // Real-time blinker: TON + TOF + CTU
 // ─────────────────────────────────────────────
+// CTU edge-case: RESET while CU is high
+// ─────────────────────────────────────────────
+static void test_CTU_edge_cases(void) {
+    printf("\n--- CTU Edge Cases ---\n");
+    CTU c = {0};
+    c.PV = 5;
+
+    // Count once
+    c.CU = true;
+    CTU_Call(&c);
+    check("CV=1 after first edge", c.CV == 1);
+
+    // RESET while CU is high
+    c.RESET = true;
+    CTU_Call(&c);
+    check("CV=0 after RESET", c.CV == 0);
+
+    // Release RESET while CU still high — should NOT count
+    c.RESET = false;
+    CTU_Call(&c);
+    check("CV stays 0 (no false edge after RESET)", c.CV == 0);
+
+    // CU must go low then high for a real edge
+    c.CU = false;
+    CTU_Call(&c);
+    c.CU = true;
+    CTU_Call(&c);
+    check("CV=1 after real rising edge post-RESET", c.CV == 1);
+}
+
+// ─────────────────────────────────────────────
+// CTD edge-case: LD while CD is high
+// ─────────────────────────────────────────────
+static void test_CTD_edge_cases(void) {
+    printf("\n--- CTD Edge Cases ---\n");
+    CTD c = {0};
+    c.PV = 5;
+
+    // Load
+    c.LD = true;
+    CTD_Call(&c);
+    check("CV=5 after LD", c.CV == 5);
+    c.LD = false;
+
+    // Count down once
+    c.CD = true;
+    CTD_Call(&c);
+    check("CV=4 after first edge", c.CV == 4);
+
+    // LD while CD is high
+    c.LD = true;
+    CTD_Call(&c);
+    check("CV=5 after LD reload", c.CV == 5);
+
+    // Release LD while CD still high — should NOT count
+    c.LD = false;
+    CTD_Call(&c);
+    check("CV stays 5 (no false edge after LD)", c.CV == 5);
+
+    // CD must go low then high for a real edge
+    c.CD = false;
+    CTD_Call(&c);
+    c.CD = true;
+    CTD_Call(&c);
+    check("CV=4 after real rising edge post-LD", c.CV == 4);
+}
+
+// ─────────────────────────────────────────────
+// CTUD edge-case: RESET/LD while CU/CD high
+// ─────────────────────────────────────────────
+static void test_CTUD_edge_cases(void) {
+    printf("\n--- CTUD Edge Cases ---\n");
+    CTUD c = {0};
+    c.PV = 5;
+
+    // Count up once
+    c.CU = true;
+    CTUD_Call(&c);
+    check("CV=1 after first CU edge", c.CV == 1);
+
+    // RESET while CU high
+    c.RESET = true;
+    CTUD_Call(&c);
+    check("CV=0 after RESET", c.CV == 0);
+
+    // Release RESET while CU still high — should NOT count
+    c.RESET = false;
+    CTUD_Call(&c);
+    check("CV stays 0 (no false CU edge after RESET)", c.CV == 0);
+
+    // Real edge
+    c.CU = false;
+    CTUD_Call(&c);
+    c.CU = true;
+    CTUD_Call(&c);
+    check("CV=1 after real CU edge post-RESET", c.CV == 1);
+}
+
+// ─────────────────────────────────────────────
+// TOF edge-case: init with IN=false
+// ─────────────────────────────────────────────
+static void test_TOF_edge_cases(void) {
+    printf("\n--- TOF Edge Cases ---\n");
+    TOF t = {0};
+    t.PT = 1000;
+
+    // Start with IN=false — Q must stay false
+    t.IN = false;
+    TOF_Call(&t, 0);
+    TOF_Call(&t, 500);
+    TOF_Call(&t, 1500);
+    check("Q stays false when IN was never true", t.Q == false);
+    check("ET stays 0 when IN was never true", t.ET == 0);
+}
+
+// ─────────────────────────────────────────────
 static void run_blinker(void) {
     printf("\n--- Real-time Blinker: TON + TOF + CTU (6 seconds) ---\n");
 
@@ -382,6 +498,10 @@ int main(void) {
     test_CTD();
     test_CTUD();
     test_TONR();
+    test_CTU_edge_cases();
+    test_CTD_edge_cases();
+    test_CTUD_edge_cases();
+    test_TOF_edge_cases();
 
     printf("\n========================================\n");
     printf("  Results: %d passed, %d failed\n", pass_count, fail_count);
