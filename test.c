@@ -443,6 +443,145 @@ static void test_TOF_edge_cases(void) {
     check("ET stays 0 when IN was never true", t.ET == 0);
 }
 
+
+// ─────────────────────────────────────────────
+// TIME is a signed 64-bit count of microseconds
+// ─────────────────────────────────────────────
+#define US_PER_S   1000000LL
+#define T_2H       (2LL * 3600LL * US_PER_S)      /* T#2h  = 7 200 000 000 us */
+#define WRAP32     4294967296LL                    /* 2^32 us, the old wrap point */
+
+static void test_TIME_type(void) {
+    printf("\n--- TIME type ---\n");
+    check("sizeof(TIME) == 8", sizeof(TIME) == 8);
+    check("sizeof(LTIME) == 8", sizeof(LTIME) == 8);
+    check("TIME is signed (T#-5s representable)", (TIME)(-5 * US_PER_S) < 0);
+    TIME t2h = T_2H;
+    check("T#2h fits (7 200 000 000 us)", t2h == 7200000000LL);
+    check("T#2h exceeds the old 32-bit range", t2h > 0xFFFFFFFFLL);
+}
+
+// TON with PT = T#2h: Q must stay FALSE until exactly 2 h, also after the
+// elapsed time crosses the old 2^32 us wrap (~71.6 min).
+static void test_TON_2h(void) {
+    printf("\n--- TON with PT = T#2h ---\n");
+    TON t = {0};
+    t.PT = T_2H;
+    t.IN = true;
+    const TIME base = 1000;            // start away from 0
+    TON_Call(&t, base);
+    check("Q false at start", t.Q == false);
+
+    TON_Call(&t, base + WRAP32 - 1);
+    check("Q false just before 2^32 us", t.Q == false);
+    check("ET = 2^32-1 just before the old wrap", t.ET == WRAP32 - 1);
+
+    TON_Call(&t, base + WRAP32 + 5);
+    check("Q false just after 2^32 us (no wrap)", t.Q == false);
+    check("ET = 2^32+5 (no wrap)", t.ET == WRAP32 + 5);
+
+    TON_Call(&t, base + T_2H - 1);
+    check("Q false 1 us before T#2h", t.Q == false);
+
+    TON_Call(&t, base + T_2H);
+    check("Q true at exactly T#2h", t.Q == true);
+    check("ET clamped at T#2h", t.ET == T_2H);
+}
+
+// A long-running case: a 3 h simulated run of a 10 ms task where the time
+// base itself starts just below 2^32 us, so both the tick and ET cross the
+// old wrap point while the timer is running.
+static void test_TON_long_run(void) {
+    printf("\n--- TON long run across the 2^32 us wrap (10 ms scans, 3 h) ---\n");
+    TON t = {0};
+    t.PT = T_2H;
+    t.IN = true;
+    const TIME start = WRAP32 - 30LL * 60LL * US_PER_S;  // 30 min before the wrap
+    TIME fired_at = -1;
+    bool et_negative = false;
+    for (TIME now = start; now <= start + 3LL * 3600LL * US_PER_S; now += 10000) {
+        TON_Call(&t, now);
+        if (t.Q && fired_at < 0) fired_at = now;
+        if (t.ET < 0) et_negative = true;
+    }
+    check("ET never negative during the run", !et_negative);
+    check("Q fired", fired_at >= 0);
+    check("Q fired exactly at start + T#2h", fired_at - start == T_2H);
+    check("ET clamped at PT afterwards", t.ET == T_2H);
+}
+
+// PT <= 0 behaves as a zero preset.
+static void test_zero_and_negative_PT(void) {
+    printf("\n--- PT <= 0 ---\n");
+    TON a = {0}; a.PT = 0; a.IN = true;
+    TON_Call(&a, 100);
+    check("TON PT=0: Q on the first IN scan", a.Q == true && a.ET == 0);
+    TON b = {0}; b.PT = -5 * US_PER_S; b.IN = true;
+    TON_Call(&b, 100);
+    check("TON PT=T#-5s: Q on the first IN scan, ET=0", b.Q == true && b.ET == 0);
+
+    TOF c = {0}; c.PT = 0; c.IN = true;
+    TOF_Call(&c, 0);
+    c.IN = false;
+    TOF_Call(&c, 10);
+    check("TOF PT=0: Q drops on the first IN=false scan", c.Q == false);
+
+    TP d = {0}; d.PT = 0; d.IN = true;
+    TP_Call(&d, 0);
+    check("TP PT=0: no pulse", d.Q == false);
+    TP_Call(&d, 10);
+    check("TP PT=0: still no pulse while IN held", d.Q == false);
+    TP e = {0}; e.PT = -1; e.IN = true;
+    TP_Call(&e, 0);
+    check("TP PT<0: no pulse, ET=0", e.Q == false && e.ET == 0);
+
+    TONR f = {0}; f.PT = 0; f.IN = true;
+    TONR_Call(&f, 50);
+    check("TONR PT=0: Q as soon as enabled", f.Q == true && f.ET == 0);
+}
+
+// A start time AHEAD of the clock (e.g. a retained instance carried over from
+// a previous boot) re-anchors instead of producing a negative ET.
+static void test_clock_behind_start(void) {
+    printf("\n--- Clock behind the stored start ---\n");
+    TON t = {0};
+    t.PT = 1000; t.IN = true;
+    TON_Call(&t, 10 * US_PER_S);           // start at 10 s
+    TON_Call(&t, 500);                     // clock now reads 500 us (restart)
+    check("TON: ET not negative, re-anchored", t.ET == 0 && t.Q == false);
+    TON_Call(&t, 1500);
+    check("TON: Q after PT from the new anchor", t.Q == true && t.ET == 1000);
+
+    TONR r = {0};
+    r.PT = 10000; r.IN = true;
+    TONR_Call(&r, 1000);
+    TONR_Call(&r, 4000);                   // ET = 3000
+    TONR_Call(&r, 100);                    // clock went backwards
+    check("TONR: accumulated ET kept when the clock goes back", r.ET == 3000);
+    TONR_Call(&r, 1100);
+    check("TONR: keeps accumulating from the new anchor", r.ET == 4000);
+}
+
+// TONR accumulating across the old 2^32 us wrap.
+static void test_TONR_large(void) {
+    printf("\n--- TONR across the 2^32 us wrap ---\n");
+    TONR t = {0};
+    t.PT = T_2H;
+    t.IN = true;
+    TONR_Call(&t, 0);
+    TONR_Call(&t, WRAP32 - 10);            // ~71.6 min accumulated
+    t.IN = false;
+    TONR_Call(&t, WRAP32 + 1000);
+    check("TONR: ET retained = 2^32-10", t.ET == WRAP32 - 10);
+    t.IN = true;
+    TONR_Call(&t, 5LL * WRAP32);           // virtual start = now - ET
+    check("TONR: ET continues from the retained value", t.ET == WRAP32 - 10);
+    TONR_Call(&t, 5LL * WRAP32 + (T_2H - (WRAP32 - 10)) - 1);
+    check("TONR: Q false 1 us before T#2h accumulated", t.Q == false);
+    TONR_Call(&t, 5LL * WRAP32 + (T_2H - (WRAP32 - 10)));
+    check("TONR: Q true at T#2h accumulated", t.Q == true && t.ET == T_2H);
+}
+
 // ─────────────────────────────────────────────
 static void run_blinker(void) {
     printf("\n--- Real-time Blinker: TON + TOF + CTU (6 seconds) ---\n");
@@ -471,10 +610,10 @@ static void run_blinker(void) {
         CTU_Call(&counter);
 
         if (counter.CU)
-            printf("  t=%7d us -> Blink HIGH | CTU CV=%d\n", current_time, counter.CV);
+            printf("  t=%7lld us -> Blink HIGH | CTU CV=%d\n", (long long)current_time, counter.CV);
 
         if (counter.Q && counter.CV == counter.PV && counter.CU)
-            printf("  t=%7d us -> CTU reached PV=%d, Q=HIGH\n", current_time, counter.PV);
+            printf("  t=%7lld us -> CTU reached PV=%d, Q=HIGH\n", (long long)current_time, counter.PV);
 
         last_blink = blink_state;
         current_time += 100;
@@ -502,6 +641,12 @@ int main(void) {
     test_CTD_edge_cases();
     test_CTUD_edge_cases();
     test_TOF_edge_cases();
+    test_TIME_type();
+    test_TON_2h();
+    test_TON_long_run();
+    test_zero_and_negative_PT();
+    test_clock_behind_start();
+    test_TONR_large();
 
     printf("\n========================================\n");
     printf("  Results: %d passed, %d failed\n", pass_count, fail_count);

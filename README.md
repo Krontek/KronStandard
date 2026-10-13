@@ -17,6 +17,13 @@ C implementation of PLC function blocks compliant with IEC 61131-3.
 | R_TRIG | Rising Edge Trigger     |
 | F_TRIG | Falling Edge Trigger    |
 
+## TIME
+
+`TIME` (and its alias `LTIME`) is a **signed 64-bit count of microseconds**
+(`typedef int64_t TIME`). `T#2h` is `7200000000`; negative durations are
+representable. Timers take the current microsecond tick as `currentTime`, and a
+preset `PT <= 0` acts as zero (see the notes in `kronstandard.h`).
+
 ## Files
 
 ```

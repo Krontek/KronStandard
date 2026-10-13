@@ -1,19 +1,37 @@
 #include "kronstandard.h"
 
+// Elapsed time since `start`, in modular unsigned arithmetic so the
+// subtraction cannot overflow (see the timer notes in kronstandard.h).
+static TIME kron_elapsed(TIME now, TIME start) {
+    return (TIME)((uint64_t)now - (uint64_t)start);
+}
+
+// A preset below zero behaves as zero (kronstandard.h).
+static TIME kron_preset(TIME pt) {
+    return pt < 0 ? 0 : pt;
+}
+
 // Timer On Delay
 void TON_Call(TON *inst, TIME currentTime) {
+    const TIME pt = kron_preset(inst->PT);
     if (inst->IN) {
         if (!inst->M) {
             inst->M = true;
             inst->StartTime = currentTime;
             inst->ET = 0;
-            inst->Q = false;
         } else {
-            inst->ET = currentTime - inst->StartTime;
-            if (inst->ET >= inst->PT) {
-                inst->ET = inst->PT;
-                inst->Q = true;
+            TIME et = kron_elapsed(currentTime, inst->StartTime);
+            if (et < 0) {               // clock behind the start: re-anchor
+                inst->StartTime = currentTime;
+                et = 0;
             }
+            inst->ET = et;
+        }
+        if (inst->ET >= pt) {
+            inst->ET = pt;
+            inst->Q = true;
+        } else {
+            inst->Q = false;
         }
     } else {
         inst->Q = false;
@@ -24,6 +42,7 @@ void TON_Call(TON *inst, TIME currentTime) {
 
 // Timer Off Delay
 void TOF_Call(TOF *inst, TIME currentTime) {
+    const TIME pt = kron_preset(inst->PT);
     if (inst->IN) {
         inst->Q = true;
         inst->ET = 0;
@@ -34,12 +53,17 @@ void TOF_Call(TOF *inst, TIME currentTime) {
             inst->StartTime = currentTime;
             inst->ET = 0;
         } else {
-            inst->ET = currentTime - inst->StartTime;
-            if (inst->ET >= inst->PT) {
-                inst->ET = inst->PT;
-                inst->Q = false;
-                inst->M = false;
+            TIME et = kron_elapsed(currentTime, inst->StartTime);
+            if (et < 0) {               // clock behind the start: re-anchor
+                inst->StartTime = currentTime;
+                et = 0;
             }
+            inst->ET = et;
+        }
+        if (inst->ET >= pt) {
+            inst->ET = pt;
+            inst->Q = false;
+            inst->M = false;
         }
     } else {
         inst->ET = 0;
@@ -62,17 +86,23 @@ void CTU_Call(CTU *inst) {
 
 // Timer Pulse
 void TP_Call(TP *inst, TIME currentTime) {
+    const TIME pt = kron_preset(inst->PT);
     if (inst->IN && !inst->M) {
-        // Rising edge: start pulse
+        // Rising edge: start pulse (a zero/negative PT gives no pulse at all)
         inst->M = true;
         inst->StartTime = currentTime;
         inst->ET = 0;
-        inst->Q = true;
+        inst->Q = (pt > 0);
     }
     if (inst->M) {
-        inst->ET = currentTime - inst->StartTime;
-        if (inst->ET >= inst->PT) {
-            inst->ET = inst->PT;
+        TIME et = kron_elapsed(currentTime, inst->StartTime);
+        if (et < 0) {                   // clock behind the start: re-anchor
+            inst->StartTime = currentTime;
+            et = 0;
+        }
+        inst->ET = et;
+        if (inst->ET >= pt) {
+            inst->ET = pt;
             inst->Q = false;
             if (!inst->IN) {
                 inst->M = false;
@@ -126,6 +156,7 @@ void CTUD_Call(CTUD *inst) {
 // On the rising edge of IN, StartTime is set to (currentTime - ET),
 // preserving whatever was accumulated in previous IN=true intervals.
 void TONR_Call(TONR *inst, TIME currentTime) {
+    const TIME pt = kron_preset(inst->PT);
     if (inst->RESET) {
         inst->ET        = 0;
         inst->Q         = false;
@@ -135,13 +166,23 @@ void TONR_Call(TONR *inst, TIME currentTime) {
 
     if (inst->IN) {
         if (!inst->M) {
-            // Rising edge: adjust StartTime so accumulated ET is preserved
-            inst->StartTime = currentTime - inst->ET;
+            // Rising edge: adjust StartTime so accumulated ET is preserved.
+            // ET is never negative here, and the subtraction is modular, so
+            // this cannot overflow.
+            if (inst->ET < 0) inst->ET = 0;
+            inst->StartTime = (TIME)((uint64_t)currentTime - (uint64_t)inst->ET);
             inst->M         = true;
         }
-        inst->ET = currentTime - inst->StartTime;
-        if (inst->ET >= inst->PT) {
-            inst->ET = inst->PT;
+        TIME et = kron_elapsed(currentTime, inst->StartTime);
+        if (et < 0) {
+            // Clock behind the virtual start: keep what was accumulated and
+            // re-anchor so accumulation continues from here.
+            et = inst->ET;
+            inst->StartTime = (TIME)((uint64_t)currentTime - (uint64_t)et);
+        }
+        inst->ET = et;
+        if (inst->ET >= pt) {
+            inst->ET = pt;
             inst->Q  = true;
         }
     } else {
